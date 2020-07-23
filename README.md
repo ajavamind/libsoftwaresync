@@ -1,5 +1,17 @@
 # Wireless Software Synchronization of Multiple Distributed Cameras
 
+Modified for use with Samsung Galaxy S8 phone by Andy Modla.
+
+Summary of changes made:
+
+1. update for fixed leader IP address instead of hotspot server
+2. change storage folder location
+3. add ISO sensitivity range table
+4. configure for Samsung S8 phone
+5. add key input to set shutter speed and ISO sensitivity and align and capture still photo.
+6. set autofocus off
+7. more debug output
+
 Reference code for the paper
 [Wireless Software Synchronization of Multiple Distributed Cameras](https://arxiv.org/abs/1812.09366).
 _Sameer Ansari, Neal Wadhwa, Rahul Garg, Jiawen Chen_, ICCP 2019.
