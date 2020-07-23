@@ -1,0 +1,44 @@
+Unable to sync less than 3 Ms at best
+
+I'm have two Samsung S8 phones mounted for stereo photography and capture photos with SoftwareSync running in debug mode. I am not able to sync these cameras to less than 3 Milliseconds. A sample size of 10 capture syncs ranged from 3 to 13 Ms (7, 6, 10, 4, 6, 10, 13, 7, 3, 9). I'm using a 10 LED linear array display counter, updated at 1 Ms intervals and measure the difference of the LED binary display values between the two camera photos. I verified the timing of the LED count up sequence with an oscilloscope - exactly 1 Ms. The SoftwareSync shutter speed was set to 1/2000 second.
+
+The phase configuration json file I use is:
+{
+  "periodNs": 33323892,
+  "goalPhaseNs": 15000000,
+  "alignThresholdNs": 200000,
+  "overheadNs": 200000,
+  "minExposureNs": 33170000
+}
+
+The periodNs value was selected based on the frameDurationMs value from debug output.
+com.googleresearch.capturesync V/CameraController: onCaptureCompleted: timestampMs = 1,595,063,382,777.953, frameDurationMs = 33.323892, phase = 30.534, sequence id = 0
+otherwise these are same values as Pixel 2 phase configuration.
+
+I do not yet understand the algorithm well enough to change these values. Could you advise how to determine the constants for a phone and how to derive these numbers. Note that the Samsung S8 shares the same cpu/gpu as the Pixel 2 but different camera.
+
+When I first began to use the SoftwareSync app I was not seeing any captures saved at all.
+The shouldSaveFrame(long synchronizedTimestampNs) method in CameraController always returned false.
+When I powered down and up both phones nearly simultaneously, only then would the photos be saved.
+When any phone was turned off for a while, and capture resumed, the photos would not be saved.
+I'm guessing the SystemClock.elapsedRealtimeNanos() clocks in the phones become too far out of range to trigger the save.
+
+My goal is to get less than 1 Ms sync at least. Any help would be appreciated, thanks.
+
+=======================================
+
+I chose not to use the mobile hotspot method to connect because it requires a connection to the Internet telecom service with the phone radio. The two phones connect through a small Mobile router (TP-Link290A 5G channel). One phone is assigned as leader using a static IP address.
+
+The client sync time shown in leader display varies from 3.4, 3.61, 3.83 to 4.33 ms after starting the app and stays fixed until the next app close and restart. The phase error is less than 0.05 ms when using a frameDurationMs 33323892. I tried other (periodNs) frameDurationMs values and this value gave the minimum client sync time.
+
+2020-07-19 21:44:24.157 9306-9446/com.googleresearch.capturesync V/CameraController: onCaptureCompleted: timestampMs = 1,595,209,456,117.579, frameDurationMs = 33.323892, phase = 21.764, sequence id = 0
+
+After taking a couple of photos the synchronization becomes progressively worse. It goes from 6 ms to 42 ms after a number of captures. I suspect autofocus may be causing a synchronization problem too, because under low light conditions, I saw instances of focus hunting.
+
+I turned off auto focus, sync improved to less than 1 ms. However it was inconsistent over a group of captures, varying up to 30 ms.
+
+I am beginning to believe the S8 has too much network latency or background overhead for good synchronization.
+
+I have to restart each phone after a couple of hours before launching the app for it to save image files.
+
+ISO sensitivity range does not match camera limits causing noisy photos. When I fixed this to match the camera ISO range, photos looked better in low light.
