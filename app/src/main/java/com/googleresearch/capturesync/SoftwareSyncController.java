@@ -93,8 +93,8 @@ public class SoftwareSyncController implements Closeable {
     try {
       NetworkHelpers networkHelper = new NetworkHelpers(wifiManager);
       localAddress = NetworkHelpers.getIPAddress();
-      leaderAddress = networkHelper.getHotspotServerAddress();
-
+      //leaderAddress = networkHelper.getHotspotServerAddress();
+      leaderAddress = InetAddress.getByName(Constants.LEADER_IP);
       // Note: This is a brittle way of checking leadership that may not work on all devices.
       // Leader only if it is the one with same IP address as the server, or a zero IP address.
       if (localAddress.equals(leaderAddress)) {

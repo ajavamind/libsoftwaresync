@@ -26,7 +26,8 @@ public final class Constants {
   /**
    * Delay from capture button press to capture, giving network time to send messages to clients.
    */
-  public static final long FUTURE_TRIGGER_DELAY_NS = TimeUtils.millisToNanos(500);
+  public static final long FUTURE_TRIGGER_DELAY_NS = TimeUtils.millisToNanos(100);  // was 500
+
 
   /* Set at least one of {SAVE_YUV, SAVE_RAW} to true to save any data. */
   public static final boolean SAVE_YUV = true;
@@ -40,6 +41,10 @@ public final class Constants {
   public static final boolean SAVE_JPG_FROM_YUV = true;
   public static final int JPG_QUALITY = 95;
 
+  public static final boolean SAVE_YUV_FILE = false;
+  public static final String PHOTO_PREFIX = "SYN_";
+  public static final boolean REQUEST_IMMEDIATE = false;
+  public static final String LEADER_IP = "192.168.0.101";
   public static final boolean USE_FULL_SCREEN_IMMERSIVE = false;
 
   private Constants() {}

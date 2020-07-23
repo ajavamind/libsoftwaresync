@@ -39,8 +39,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
+import android.util.Range;
 import android.util.Size;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.View;
@@ -73,7 +75,9 @@ public class MainActivity extends Activity {
   private boolean permissionsGranted = false;
 
   // Phase config file to use for phase alignment, configs are located in the raw folder.
-  private final int phaseConfigFile = R.raw.pixel3_phaseconfig;
+  //private final int phaseConfigFile = R.raw.pixel3_phaseconfig;
+  //private final int phaseConfigFile = R.raw.pixel2_phaseconfig;
+  private final int phaseConfigFile = R.raw.s8_phaseconfig;
 
   // Camera controls.
   private HandlerThread cameraThread;
@@ -84,6 +88,7 @@ public class MainActivity extends Activity {
   private String cameraId;
   private CameraDevice cameraDevice;
   private CameraCharacteristics cameraCharacteristics;
+  private CameraFeatures cameraFeatures;
 
   // Cached camera characteristics.
   private Size viewfinderResolution;
@@ -105,8 +110,10 @@ public class MainActivity extends Activity {
   private TextView phaseTextView;
 
   // Local variables tracking current manual exposure and sensitivity values.
-  private long currentSensorExposureTimeNs = seekBarValueToExposureNs(10);
-  private int currentSensorSensitivity = seekBarValueToSensitivity(3);
+  private long currentSensorExposureTimeNs;
+  private int currentSensorSensitivity;
+  private int[] iso = {56, 78, 100, 150, 200, 400, 800, 1600, 3200, 6400, 7237 };  // Samsung S8 ISO range
+  private int[] exposureSteps = {32, 60, 125, 250, 500, 1000, 2000, 4000, 8000, 12000, 16000};
 
   // High level camera controls.
   private CameraController cameraController;
@@ -145,10 +152,30 @@ public class MainActivity extends Activity {
   private int numCaptures;
   private Toast latestToast;
 
+  public static class CameraFeatures {
+    public List<String> supported_focus_values;
+    public int max_num_focus_areas;
+    public float minimum_focus_distance;
+    public boolean is_exposure_lock_supported;
+    public boolean supports_iso_range;
+    public int min_iso;
+    public int max_iso;
+    public boolean supports_exposure_time;
+    public long min_exposure_time;
+    public long max_exposure_time;
+    public int min_exposure;
+    public int max_exposure;
+    public float exposure_step;
+    public boolean supports_raw;
+  }
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     Log.v(TAG, "onCreate");
+    cameraFeatures = new CameraFeatures();
+    currentSensorExposureTimeNs = seekBarValueToExposureNs(10);
+    currentSensorSensitivity = seekBarValueToSensitivity(3);
 
     checkPermissions();
     if (permissionsGranted) {
@@ -238,17 +265,21 @@ public class MainActivity extends Activity {
 
   @Override
   public void onResume() {
-    Log.d(TAG, "onResume");
+Log.d(TAG, "onResume");
     super.onResume(); // Required.
 
-    surfaceView
-        .getHolder()
-        .setFixedSize(viewfinderResolution.getWidth(), viewfinderResolution.getHeight());
-    surfaceView.getHolder().addCallback(surfaceCallback);
-    Log.d(TAG, "Surfaceview size: " + surfaceView.getWidth() + ", " + surfaceView.getHeight());
-    surfaceView.setVisibility(View.VISIBLE);
+    try {
+      surfaceView
+              .getHolder()
+              .setFixedSize(viewfinderResolution.getWidth(), viewfinderResolution.getHeight());
+      surfaceView.getHolder().addCallback(surfaceCallback);
+      Log.d(TAG, "Surfaceview size: " + surfaceView.getWidth() + ", " + surfaceView.getHeight());
+      surfaceView.setVisibility(View.VISIBLE);
 
-    startCameraThread();
+      startCameraThread();
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 
   @Override
@@ -265,6 +296,7 @@ public class MainActivity extends Activity {
   }
 
   private void startCameraThread() {
+    Log.d(TAG, "startCameraThread()");
     cameraThread = new HandlerThread("CameraThread");
     cameraThread.start();
     cameraHandler = new Handler(cameraThread.getLooper());
@@ -499,6 +531,29 @@ public class MainActivity extends Activity {
     }
     cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId);
 
+    Range<Integer> iso_range = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE); // may be null on some devices
+    if( iso_range != null ) {
+      cameraFeatures.supports_iso_range = true;
+      cameraFeatures.min_iso = iso_range.getLower();
+      cameraFeatures.max_iso = iso_range.getUpper();
+      // we only expose exposure_time if iso_range is supported
+      Range<Long> exposure_time_range = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE); // may be null on some devices
+      if( exposure_time_range != null ) {
+        cameraFeatures.supports_exposure_time = true;
+        cameraFeatures.min_exposure_time = exposure_time_range.getLower();
+        cameraFeatures.max_exposure_time = exposure_time_range.getUpper();
+      }
+    }
+
+    Range<Integer> exposure_range = cameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+    cameraFeatures.min_exposure = exposure_range.getLower();
+    cameraFeatures.max_exposure = exposure_range.getUpper();
+    cameraFeatures.exposure_step = cameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP).floatValue();
+
+    // set ISO range table limits
+    iso[0] = cameraFeatures.min_iso;
+    iso[10] = cameraFeatures.max_iso;
+
     StreamConfigurationMap scm =
         cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
 
@@ -524,7 +579,11 @@ public class MainActivity extends Activity {
     } else {
       Log.i(TAG, "Bayer RAW unavailable!");
     }
-    rawImageResolution = Collections.max(Arrays.asList(rawOutputSizes), new CompareSizesByArea());
+    if (rawOutputSizes != null) {
+        rawImageResolution = Collections.max(Arrays.asList(rawOutputSizes), new CompareSizesByArea());
+    } else {
+        rawImageResolution = null;
+    }
 
     Size[] yuvOutputSizes = scm.getOutputSizes(ImageFormat.YUV_420_888);
     if (yuvOutputSizes != null) {
@@ -543,6 +602,7 @@ public class MainActivity extends Activity {
 
   public void setUpcomingCaptureStill(long upcomingTriggerTimeNs) {
     cameraController.setUpcomingCaptureStill(upcomingTriggerTimeNs);
+    Log.d(TAG, "setUpcomingCaptureStill "+upcomingTriggerTimeNs);
     double timeTillSec =
         TimeUtils.nanosToSeconds(
             (double)
@@ -622,6 +682,7 @@ public class MainActivity extends Activity {
 
     // TextViews.
     statusTextView = findViewById(R.id.status_text);
+    statusTextView.setText(statusTextView.getText() + " " + BuildConfig.VERSION_NAME+ " "+BuildConfig.BUILD_TYPE);
     softwaresyncStatusTextView = findViewById(R.id.softwaresync_text);
     sensorExposureTextView = findViewById(R.id.sensor_exposure);
     sensorSensitivityTextView = findViewById(R.id.sensor_sensitivity);
@@ -672,8 +733,7 @@ public class MainActivity extends Activity {
 
   private long seekBarValueToExposureNs(int value) {
     // Convert 0-10 values ranging from 1/32 to 1/16,000 of a second.
-    int[] steps = {32, 60, 125, 250, 500, 1000, 2000, 4000, 8000, 12000, 16000};
-    int denominator = steps[10 - value];
+    int denominator = exposureSteps[10 - value];
     double exposureSec = 1. / denominator;
     return (long) (exposureSec * 1_000_000_000);
   }
@@ -683,8 +743,8 @@ public class MainActivity extends Activity {
   }
 
   private int seekBarValueToSensitivity(int value) {
-    // Convert 0-10 values to 0-800 sensor sensitivities.
-    return (value * 800) / 10;
+      // Convert 0-10 values to sensor sensitivitiy range.
+      return iso[value];
   }
 
   @Override
@@ -839,5 +899,97 @@ public class MainActivity extends Activity {
 
     // All permissions granted. Continue startup.
     onCreateWithPermission();
+  }
+
+  public boolean onKeyDown(int keyCode, KeyEvent event) {
+    //if (DEBUG) Log.d(TAG, "onKeyDown "+ keyCode);
+    boolean consume = false;
+    switch (keyCode) {
+      case KeyEvent.KEYCODE_ENTER:
+        // use remote controller instead of GUI button
+        captureStillButton.performClick();
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_VOLUME_UP:
+        // use remote controller instead of GUI button
+        phaseAlignButton.performClick();
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_VOLUME_DOWN:
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD: // faster shutter
+        int curvalue = exposureSeekBar.getProgress();
+        if (exposureSeekBar.getMin() < curvalue) {
+          curvalue--;
+        }
+        exposureSeekBar.setProgress(curvalue, true);
+        startPreview();
+        scheduleBroadcast2a();
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_MEDIA_REWIND: // slower shutter
+        int value = exposureSeekBar.getProgress();
+        if (exposureSeekBar.getMax() > value) {
+          value++;
+        }
+        exposureSeekBar.setProgress(value, true);
+        startPreview();
+        scheduleBroadcast2a();
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_MEDIA_PREVIOUS: // lower ISO sensitivity
+        int ivalue = sensitivitySeekBar.getProgress();
+        if (sensitivitySeekBar.getMin() < ivalue) {
+          ivalue--;
+        }
+        sensitivitySeekBar.setProgress(ivalue, true);
+        startPreview();
+        scheduleBroadcast2a();
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_MEDIA_NEXT: // higher ISO sensitivity
+        int svalue = sensitivitySeekBar.getProgress();
+        if (sensitivitySeekBar.getMax() > svalue) {
+          svalue++;
+        }
+        sensitivitySeekBar.setProgress(svalue, true);
+        startPreview();
+        scheduleBroadcast2a();
+        consume = true;
+        break;
+      default:
+        break;
+    }
+    if (!consume)
+      return super.onKeyDown(keyCode, event);
+    return consume;
+  }
+
+  public boolean onKeyUp(int keyCode, KeyEvent event) {
+    //if (DEBUG) Log.d(TAG, "onKeyUp "+ keyCode);
+    boolean consume = false;
+    switch (keyCode) {
+      case KeyEvent.KEYCODE_ENTER:
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_VOLUME_UP:
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_VOLUME_DOWN:
+        consume = true;
+        break;
+      case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+        consume = true;
+        break;
+      default:
+        break;
+    }
+    if (!consume)
+      return super.onKeyUp(keyCode, event);
+    return consume;
   }
 }

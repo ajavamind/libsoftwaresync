@@ -69,6 +69,7 @@ public class CameraController {
   private String goalOutputDirName;
 
   private CaptureRequestFactory requestFactory;
+  private boolean requestStill;  // for debug
 
   /**
    * Constructs the high level CameraController object.
@@ -135,8 +136,12 @@ public class CameraController {
                   result.get(CaptureResult.SENSOR_TIMESTAMP));
 
           double timestampMs = TimeUtils.nanosToMillis((double) synchronizedTimestampNs);
-          double frameDurationMs =
-              TimeUtils.nanosToMillis((double) result.get(CaptureResult.SENSOR_FRAME_DURATION));
+          double frameDurationMs = 0;
+          try {
+            frameDurationMs =
+                    TimeUtils.nanosToMillis((double) result.get(CaptureResult.SENSOR_FRAME_DURATION));
+          } catch (NullPointerException npe) {
+          }
 
           long phaseNs = phaseAlignController.updateCaptureTimestamp(synchronizedTimestampNs);
           double phaseMs = TimeUtils.nanosToMillis((double) phaseNs);
@@ -162,6 +167,16 @@ public class CameraController {
 
   /* Check if given timestamp is or passed goal timestamp in the synchronized leader time domain. */
   private boolean shouldSaveFrame(long synchronizedTimestampNs) {
+    if (requestStill) {
+      requestStill = false;
+      Log.d(
+              TAG,
+              String.format(
+                      "onCaptureSave: synchronizedTimestampNs = %d, goalSynchronizedTimestampNs = %d",
+                      synchronizedTimestampNs, goalSynchronizedTimestampNs));
+
+      return true;
+    }
     return goalSynchronizedTimestampNs != 0
         && synchronizedTimestampNs >= goalSynchronizedTimestampNs;
   }
@@ -215,7 +230,8 @@ public class CameraController {
     Log.i(
         TAG,
         String.format(
-            "Request sync still at %d to %s", goalSynchronizedTimestampNs, goalOutputDirName));
+            "Request sync still at %d to output file %s", goalSynchronizedTimestampNs, goalOutputDirName));
+    requestStill = Constants.REQUEST_IMMEDIATE;
   }
 
   private String getTimeStr(long timestampNs) {

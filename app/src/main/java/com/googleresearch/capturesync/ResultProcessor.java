@@ -23,6 +23,7 @@ import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.hardware.camera2.CaptureResult;
 import android.media.Image;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.provider.MediaStore;
@@ -73,7 +74,9 @@ public class ResultProcessor {
   }
 
   private void processStill(final Frame frame, String basename) {
-    File captureDir = new File(context.getExternalFilesDir(null), basename);
+    //File captureDir = new File(context.getExternalFilesDir(null), basename);
+    final File externalStorage = Environment.getExternalStorageDirectory();
+    File captureDir = new File(externalStorage, "/DCIM/OpenCamera/3D");
     if (!captureDir.exists() && !captureDir.mkdirs()) {
       throw new IllegalStateException("Could not create dir " + captureDir);
     }
@@ -85,6 +88,9 @@ public class ResultProcessor {
     // Use syncedSensorTimestamp in milliseconds for filenames.
     long syncedSensorTimestampMs = (long) TimeUtils.nanosToMillis(syncedSensorTimestampNs);
     String filenameTimeString = getTimeStr(syncedSensorTimestampMs);
+    //long syncedSensorTimestampMs = (long) TimeUtils.nanosToMillis(syncedSensorTimestampNs);
+    //String filenameTimeString = getTimeStr(syncedSensorTimestampMs);
+    //String filenameTimeString = getTimeStrResultProcessor(syncedSensorTimestampNs);
 
     // Save timing metadata.
     {
@@ -125,11 +131,12 @@ public class ResultProcessor {
         // TODO(jiawen): To determine if it's NV12 vs NV21, we need JNI to compare the buffer start
         // addresses.
 
-        context.notifyCapturing("img_" + filenameTimeString);
+        context.notifyCapturing(Constants.PHOTO_PREFIX + filenameTimeString);
 
         // Save NV21 raw + metadata.
+        if (Constants.SAVE_YUV_FILE)
         {
-          File nv21File = new File(captureDir, "img_" + filenameTimeString + ".nv21");
+          File nv21File = new File(captureDir, Constants.PHOTO_PREFIX + filenameTimeString + ".nv21");
           File nv21MetadataFile =
               new File(captureDir, "nv21_metadata_" + filenameTimeString + ".txt");
           saveNv21(image, nv21File, nv21MetadataFile);
@@ -139,7 +146,7 @@ public class ResultProcessor {
         // TODO(samansari): Make save JPEG a checkbox in the UI.
         if (saveJpgFromNv21) {
           YuvImage yuvImage = yuvImageFromNv21Image(image);
-          File jpgFile = new File(captureDir, "img_" + filenameTimeString + ".jpg");
+          File jpgFile = new File(captureDir, Constants.PHOTO_PREFIX + filenameTimeString + ".jpg");
 
           // Push saving JPEG onto queue to let the frame close faster, necessary for some devices.
           handler.post(() -> saveJpg(yuvImage, jpgFile));
@@ -336,6 +343,22 @@ public class ResultProcessor {
     simpleDateFormat.setTimeZone(TimeZone.getDefault());
     return simpleDateFormat.format(timestampMs);
   }
+
+//  private String getTimeStrCameraController(long timestampNs) {
+//    SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS");
+//    simpleDateFormat.setTimeZone(TimeZone.getDefault());
+//    return simpleDateFormat.format(timestampNs / 1_000_000L);
+//  }
+//
+//  private static String getTimeStrTest(long timestampNs) {
+//    SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS");
+//    simpleDateFormat.setTimeZone(TimeZone.getDefault());
+//    String ts= simpleDateFormat.format(timestampNs / 1_000_000L);
+//    Date current_date = new Date();
+//    String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(current_date);
+//    Log.d(TAG, " "+ts + " " + timeStamp +" "+timestampNs);
+//    return ts;
+//  }
 
   // Save metadata.
   private static void saveTimingMetadata(
